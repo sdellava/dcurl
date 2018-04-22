@@ -1,5 +1,36 @@
 # dcurl - Multi-threaded Curl implementation
-Hardware-accelerated implementation for IOTA PearlDiver, which utilizes multi-threaded SIMD and GPU.
+Hardware-accelerated implementation for IOTA PearlDiver, which utilizes multi-threaded SIMD and GPU - and FPGA.
+
+
+# Differences to original dcurl library
+
+IOTA PoW (proof of work) is one of the biggeste challenges for small microcontrollers - even for not so small controllers like an ARM-SoC which is used on Raspberry Pi.
+
+This repository is about the implementation of PoW in hardware to boost PoW performance of small controllers.
+
+Currently, it is running on Altera DE1 (quite old Cyclon2 with 22kLE @ 120MHz, 85% resources used) and archives 4.2MH/s - for comparison, my i5 2500k archives with 128Bit SSE about 2.6MH/s.
+
+# Next steps
+
+The next step is to develop and build an extension PCB which fits perfectly on top of a Raspi - I think, I'll need 8 weeks from now (=mid June'18).
+
+All hardware and software will become open-source.
+<!---
+If you think, the project is worth supporting, please consider to leave me a tip at:
+
+LLEYMHRKXWSPMGCMZFPKKTHSEMYJTNAZXSAYZGQUEXLXEEWPXUNWBFDWESOJVLHQHXOPQEYXGIRBYTLRWHMJAOSHUY
+-->
+Thank you very much :)
+
+<br><br>
+<br><br>
+
+
+
+
+
+
+
 
 # Introduction
 dcurl exploits SIMD instructions on CPU and OpenCL on GPU. Both CPU and GPU accelerations can be
