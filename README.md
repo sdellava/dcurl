@@ -19,9 +19,9 @@ All hardware and software will become open-source.
 If you think, the project is worth supporting, please consider to leave me a tip at:
 
 LLEYMHRKXWSPMGCMZFPKKTHSEMYJTNAZXSAYZGQUEXLXEEWPXUNWBFDWESOJVLHQHXOPQEYXGIRBYTLRWHMJAOSHUY
--->
-Thank you very much :)
 
+Thank you very much :)
+-->
 <br><br>
 <br><br>
 
