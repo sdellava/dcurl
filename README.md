@@ -8,7 +8,7 @@ IOTA PoW (proof of work) is one of the biggeste challenges for small microcontro
 
 This repository is about the implementation of PoW in hardware to boost PoW performance of small controllers.
 
-Currently, it is running on Altera DE1 (quite old Cyclon2 with 22kLE @ 120MHz, 85% resources used) and archives 4.2MH/s - for comparison, my i5 2500k archives with 128Bit SSE about 2.6MH/s.
+Currently, it is running on Altera DE1 (quite old Cyclon2 with 22kLE @ 120MHz, 85% resources used) and archives 4.2MH/s - this enables a Raspberry Pi to perform PoW within 2-3 seconds (>x30 performance gain) :)
 
 # Next steps
 
