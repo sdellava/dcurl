@@ -33,7 +33,7 @@
 #define CMD_LOOP_TEST                   0x54123456
 
 // TODO: read back from FPGA
-#define PARALLEL 5
+#define PARALLEL 7
 
 static uint32_t nonce_first_trits_lo[2] = {0};
 static uint32_t nonce_first_trits_hi[2] = {0};
@@ -359,7 +359,7 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
 
     printf("Found nonce: %08x (mask: %08x)\n", binary_nonce, mask);
     
-    double nodespersec = (double) binary_nonce / (double) (stop-start) / 1000.0 * 5.0;
+    double nodespersec = (double) binary_nonce / (double) (stop-start) / 1000.0 * (double) PARALLEL;
     printf("Time: %llums  -  MH/s: %.3f\n", (stop-start), nodespersec);
 
     if (!mask)
