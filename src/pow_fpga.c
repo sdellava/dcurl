@@ -22,6 +22,22 @@
 #define FLAG_FOUND (1<<1)
 #define FLAG_OVERFLOW (1<<2)
 
+#define CMD_NOP                         0x00000000
+#define CMD_WRITE_FLAGS                 0x84000000       
+#define CMD_RESET_WRPTR                 0x94000000
+#define CMD_WRITE_DATA                  0x88000000
+#define CMD_WRITE_MIN_WEIGHT_MAGNITUDE  0x90000000
+#define CMD_READ_FLAGS                  0x04000000
+#define CMD_READ_NONCE                  0x0c000000
+#define CMD_READ_MASK                   0x10000000
+#define CMD_LOOP_TEST                   0x54123456
+
+// TODO: read back from FPGA
+#define PARALLEL 5
+
+static uint32_t nonce_first_trits_lo[2] = {0};
+static uint32_t nonce_first_trits_hi[2] = {0};
+
 
 uint32_t reverse(uint32_t cmd) {
     uint32_t rev = 0x00000000;
@@ -59,7 +75,7 @@ uint32_t sendReceive(uint32_t cmd) {
 // nop
 // write flags
 void cmd_write_flags(char flag_start) {
-    uint32_t cmd = 0x84000000;
+    uint32_t cmd = CMD_WRITE_FLAGS;
     
     if (flag_start)
         cmd |= 0x00000001;
@@ -68,21 +84,25 @@ void cmd_write_flags(char flag_start) {
 }
 
 uint32_t cmd_read_test() {
-    uint32_t cmd = 0x54123456;
+    uint32_t cmd = CMD_LOOP_TEST;
     return sendReceive(cmd);
 }
 
-void cmd_write_data(uint32_t address, uint32_t tritshi, uint32_t tritslo) {
-    uint32_t cmd = 0x88000000;
+void cmd_reset_wrptr() {
+    uint32_t cmd = CMD_RESET_WRPTR;
+    send(cmd);
+}
+
+void cmd_write_data(uint32_t tritshi, uint32_t tritslo) {
+    uint32_t cmd = CMD_WRITE_DATA;
     
-    cmd |= (address & 0x000003ff) << 16;
-    cmd |= (tritshi & 0x00000007) << 8;
-    cmd |= (tritslo & 0x00000007);
+    cmd |= tritslo & 0x000001ff;
+    cmd |= (tritshi & 0x000001ff) << 9;
     
     send(cmd);
 }
 
-void cmd_read_data(uint32_t address, uint32_t *tritshi, uint32_t *tritslo) {
+/*void cmd_read_data(uint32_t address, uint32_t *tritshi, uint32_t *tritslo) {
     uint32_t cmd = 0x08000000;
     cmd |= (address & 0x000003ff) << 16;
     
@@ -90,16 +110,16 @@ void cmd_read_data(uint32_t address, uint32_t *tritshi, uint32_t *tritslo) {
     
     *tritslo = rcv & 0x00000007;
     *tritshi = (rcv & 0x00000700) >> 8;
-}
+}*/
 
 
 uint32_t cmd_read_binary_nonce() {
-    uint32_t cmd = 0x0c000000;
+    uint32_t cmd = CMD_READ_NONCE;
     return sendReceive(cmd);
 }
 
 void cmd_write_min_weight_magnitude(int bits) {
-    uint32_t cmd = 0x90000000;
+    uint32_t cmd = CMD_WRITE_MIN_WEIGHT_MAGNITUDE;
     
     if (bits > 26)
         bits = 26;
@@ -112,13 +132,13 @@ void cmd_write_min_weight_magnitude(int bits) {
 
 
 uint32_t cmd_get_mask() {
-    uint32_t cmd = 0x10000000;
+    uint32_t cmd = CMD_READ_MASK;
     return sendReceive(cmd);
 }
 
 
 uint32_t cmd_get_flags() {
-    uint32_t cmd = 0x04000000;
+    uint32_t cmd = CMD_READ_FLAGS;
     return sendReceive(cmd);
 }
 
@@ -161,6 +181,25 @@ int8_t lh_to_trit(uint32_t h, uint32_t l) {
 //    if (h == 1 && l == 0)
     return -128;
 }
+
+uint32_t trit_to_bit_lo(int8_t trit) {
+    switch (trit) {
+        case 0: return 0x1;
+        case -1: return 0x1;
+        case 1: return 0x0;
+        default: return 0;
+    }
+}
+
+uint32_t trit_to_bit_hi(int8_t trit) {
+    switch (trit) {
+        case 0: return 0x1;
+        case -1: return 0x0;
+        case 1: return 0x1;
+        default: return 0;
+    }
+}
+
 
 static int8_t *tx_to_cstate(Trytes_t *tx)
 {
@@ -222,6 +261,14 @@ long long current_timestamp() {
     return milliseconds;
 }
 
+int pow3(int a) {
+        int res = 1;
+        for (int i=0;i<a;i++) {
+                res *= 3;
+        }
+        return res;
+}
+
 int pow_fpga_init()
 {
     if (!bcm2835_init()) 
@@ -237,6 +284,24 @@ int pow_fpga_init()
     bcm2835_gpio_fsel(CS,BCM2835_GPIO_FSEL_OUTP);
 		  
     init_cs();
+    
+    
+    for (int j=0;j<=1;j++) {
+        for (int i=0;i<=PARALLEL-1;i++) {
+            int x = i/pow3(j);
+            if (x % 3 == 0) {
+                    nonce_first_trits_lo[j] |= 1<<i;
+                    nonce_first_trits_hi[j] |= 1<<i;
+            }
+            if (x % 3 == 1) {
+                    nonce_first_trits_hi[j] |= 1<<i;
+            }
+            if (x % 3 == 2) {
+                    nonce_first_trits_lo[j] |= 1<<i;
+            }
+        }
+    }
+    
     return 1;
 }
 
@@ -244,6 +309,9 @@ void pow_fpga_destroy()
 {
     bcm2835_spi_end();
 }
+
+
+
 
 int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
 {
@@ -253,29 +321,28 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     if (!c_state)
         return NULL;
 
-    uint32_t lmid[STATE_LENGTH] = {0}, hmid[STATE_LENGTH] = {0};
-    para(c_state, lmid, hmid);
-
     int offset = HASH_LENGTH - NONCE_LENGTH;
 
-    uint32_t nonce_first_trits_lo = 0x00000005;
-    uint32_t nonce_first_trits_hi = 0x00000003;
 
-    for (int i=offset;i<HASH_LENGTH;i++) {
-        lmid[i] = 0xffffffff;
-        hmid[i] = 0xffffffff;
+    // reset write pointer - it gets incremented automatically with every write
+    cmd_reset_wrptr();
+    
+    // convert trits to 9byte-wise data
+    for (uint32_t i=0;i<STATE_LENGTH/9;i++) {
+        uint32_t tritslo = 0;
+        uint32_t tritshi = 0;
+        for (uint32_t j=0;j<9;j++) {
+            tritslo |= trit_to_bit_lo(c_state[i*9+j]) << j;
+            tritshi |= trit_to_bit_hi(c_state[i*9+j]) << j;
+        }
+        cmd_write_data(tritshi, tritslo);
     }
 
-    lmid[offset] = 0x00000005;
-    hmid[offset] = 0x00000003;
-
-    // send mid state to fpga
-    for (int i=0;i<STATE_LENGTH;i++) 
-        cmd_write_data(i, hmid[i], lmid[i]);
-
-
+    // write min weight magnitude
     cmd_write_min_weight_magnitude(mwm);
-    cmd_write_flags(1); // start
+    
+    // start
+    cmd_write_flags(1); 
     
     long long start = current_timestamp();
     while (1) {
@@ -286,41 +353,47 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     }
     long long stop = current_timestamp();
 
-    uint32_t binary_nonce = cmd_read_binary_nonce();
+    uint32_t binary_nonce = cmd_read_binary_nonce()-1; // -1 comes from pipelining the counter for speed on FPGA
     uint32_t mask = cmd_get_mask();
 
 
     printf("Found nonce: %08x (mask: %08x)\n", binary_nonce, mask);
     
-    double nodespersec = (double) binary_nonce / (double) (stop-start) / 1000.0 * 3.0;
-    printf("Time: %llu  -  MH/s: %.3f\n", (stop-start), nodespersec);
+    double nodespersec = (double) binary_nonce / (double) (stop-start) / 1000.0 * 5.0;
+    printf("Time: %llums  -  MH/s: %.3f\n", (stop-start), nodespersec);
 
     if (!mask)
-	return 0;
+        return 0;
 
-
+    
     // find set bit in mask
-    while (!(mask & 0x1)) {
-        mask >>=1;
-        nonce_first_trits_lo >>= 1;
-        nonce_first_trits_hi >>= 1;
+    int found_bit = 0;
+    for (int i=0;i<PARALLEL;i++) {
+        if (mask & (1<<i)) {
+            found_bit = i;
+            break;
+        }
     }
 
-    uint8_t bitslo[NonceTrinarySize];
-    uint8_t bitshi[NonceTrinarySize];
+    uint8_t bitslo[NonceTrinarySize] = {0};
+    uint8_t bitshi[NonceTrinarySize] = {0};
 
-    // assemble complete nonce
-    bitslo[0] = nonce_first_trits_lo & 0x1;
-    bitshi[0] = nonce_first_trits_hi & 0x1;
+    uint8_t* ptr_bitslo = &bitslo[0];
+    uint8_t* ptr_bitshi = &bitshi[0];
+    
+    for (int i=0;i<2;i++) {
+        *ptr_bitslo++ = (nonce_first_trits_lo[i] & (1 << found_bit)) ? 0x1 : 0x0;
+        *ptr_bitshi++ = (nonce_first_trits_hi[i] & (1 << found_bit)) ? 0x1 : 0x0;
+    }
     
     for (int i=0;i<32;i++) {
-        bitslo[1+i] = (binary_nonce >> i) & 0x1;
-        bitshi[1+i] = ((~binary_nonce) >> i) &0x1;
+        *ptr_bitslo++ = (binary_nonce >> i) & 0x1;
+        *ptr_bitshi++ = ((~binary_nonce) >> i) & 0x1;
     }
 
     for (int i=33;i<NonceTrinarySize;i++) {
-	bitslo[i] = 0x1;
-	bitshi[i] = 0x1; 
+        *ptr_bitslo++ = 0x1;
+        *ptr_bitshi++ = 0x1;
     }
   
     int8_t* nonceTrits = (int8_t*) malloc(NonceTrinarySize);
