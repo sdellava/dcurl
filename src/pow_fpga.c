@@ -30,13 +30,22 @@
 #define CMD_READ_FLAGS                  0x04000000
 #define CMD_READ_NONCE                  0x0c000000
 #define CMD_READ_MASK                   0x10000000
+#define CMD_READ_PARALLEL               0x18000000
 #define CMD_LOOP_TEST                   0x54123456
 
-// TODO: read back from FPGA
-#define PARALLEL 7
 
 static uint32_t nonce_first_trits_lo[2] = {0};
 static uint32_t nonce_first_trits_hi[2] = {0};
+
+static uint32_t parallel = 0;
+
+int pow3(int a) {
+        int res = 1;
+        for (int i=0;i<a;i++) {
+                res *= 3;
+        }
+        return res;
+}
 
 
 uint32_t reverse(uint32_t cmd) {
@@ -101,6 +110,28 @@ void cmd_write_data(uint32_t tritshi, uint32_t tritslo) {
     
     send(cmd);
 }
+
+void cmd_read_parallel_level() {
+    uint32_t cmd = CMD_READ_PARALLEL;
+    parallel = sendReceive(cmd);
+    
+    for (int j=0;j<=1;j++) {
+        for (int i=0;i<=parallel-1;i++) {
+            int x = i/pow3(j);
+            if (x % 3 == 0) {
+                    nonce_first_trits_lo[j] |= 1<<i;
+                    nonce_first_trits_hi[j] |= 1<<i;
+            }
+            if (x % 3 == 1) {
+                    nonce_first_trits_hi[j] |= 1<<i;
+            }
+            if (x % 3 == 2) {
+                    nonce_first_trits_lo[j] |= 1<<i;
+            }
+        }
+    }
+}
+    
 
 /*void cmd_read_data(uint32_t address, uint32_t *tritshi, uint32_t *tritslo) {
     uint32_t cmd = 0x08000000;
@@ -261,13 +292,6 @@ long long current_timestamp() {
     return milliseconds;
 }
 
-int pow3(int a) {
-        int res = 1;
-        for (int i=0;i<a;i++) {
-                res *= 3;
-        }
-        return res;
-}
 
 int pow_fpga_init()
 {
@@ -285,22 +309,10 @@ int pow_fpga_init()
 		  
     init_cs();
     
+    // read parallel level from FPGA
+    cmd_read_parallel_level();
     
-    for (int j=0;j<=1;j++) {
-        for (int i=0;i<=PARALLEL-1;i++) {
-            int x = i/pow3(j);
-            if (x % 3 == 0) {
-                    nonce_first_trits_lo[j] |= 1<<i;
-                    nonce_first_trits_hi[j] |= 1<<i;
-            }
-            if (x % 3 == 1) {
-                    nonce_first_trits_hi[j] |= 1<<i;
-            }
-            if (x % 3 == 2) {
-                    nonce_first_trits_lo[j] |= 1<<i;
-            }
-        }
-    }
+    printf("parallel level detected: %u\n", parallel);
     
     return 1;
 }
@@ -359,7 +371,7 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
 
     printf("Found nonce: %08x (mask: %08x)\n", binary_nonce, mask);
     
-    double nodespersec = (double) binary_nonce / (double) (stop-start) / 1000.0 * (double) PARALLEL;
+    double nodespersec = (double) binary_nonce / (double) (stop-start) / 1000.0 * (double) parallel;
     printf("Time: %llums  -  MH/s: %.3f\n", (stop-start), nodespersec);
 
     if (!mask)
@@ -368,7 +380,7 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     
     // find set bit in mask
     int found_bit = 0;
-    for (int i=0;i<PARALLEL;i++) {
+    for (int i=0;i<parallel;i++) {
         if (mask & (1<<i)) {
             found_bit = i;
             break;
