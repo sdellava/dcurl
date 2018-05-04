@@ -313,9 +313,6 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     if (!c_state)
         return NULL;
 
-    int offset = HASH_LENGTH - NONCE_LENGTH;
-
-
     // reset write pointer - it gets incremented automatically with every write
     cmd_reset_wrptr();
     
