@@ -113,7 +113,7 @@ void cmd_write_data(uint32_t tritshi, uint32_t tritslo) {
 
 void cmd_read_parallel_level() {
     uint32_t cmd = CMD_READ_PARALLEL;
-    parallel = sendReceive(cmd);
+    parallel = sendReceive(cmd) & 0x0000000f;
     
     for (int j=0;j<=1;j++) {
         for (int i=0;i<=parallel-1;i++) {
@@ -164,13 +164,13 @@ void cmd_write_min_weight_magnitude(int bits) {
 
 uint32_t cmd_get_mask() {
     uint32_t cmd = CMD_READ_MASK;
-    return sendReceive(cmd);
+    return sendReceive(cmd) & ((1<<parallel)-1);
 }
 
 
 uint32_t cmd_get_flags() {
     uint32_t cmd = CMD_READ_FLAGS;
-    return sendReceive(cmd);
+    return sendReceive(cmd) & 0x00000007;
 }
 
 void init_cs() {
@@ -342,7 +342,7 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     }
     long long stop = current_timestamp();
 
-    uint32_t binary_nonce = cmd_read_binary_nonce()-1; // -1 comes from pipelining the counter for speed on FPGA
+    uint32_t binary_nonce = cmd_read_binary_nonce();//-1; // -1 comes from pipelining the counter for speed on FPGA
     uint32_t mask = cmd_get_mask();
 
 
