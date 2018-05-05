@@ -182,26 +182,6 @@ void init_cs() {
     delay(10);
 }
 
-void para(int8_t in[], uint32_t l[], uint32_t h[])
-{
-    for (int i = 0; i < STATE_LENGTH; i++) {
-        switch (in[i]) {
-        case 0:
-            l[i] = HBITS;
-            h[i] = HBITS;
-            break;
-        case 1:
-            l[i] = LBITS;
-            h[i] = HBITS;
-            break;
-        case -1:
-            l[i] = HBITS;
-            h[i] = LBITS;
-            break;
-        }
-    }
-}
-
 int8_t lh_to_trit(uint32_t h, uint32_t l) {
     if (h && l)
         return 0;
@@ -332,9 +312,6 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     int8_t *c_state = tx_to_cstate(trytes_t);
     if (!c_state)
         return NULL;
-
-    int offset = HASH_LENGTH - NONCE_LENGTH;
-
 
     // reset write pointer - it gets incremented automatically with every write
     cmd_reset_wrptr();

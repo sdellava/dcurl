@@ -49,6 +49,7 @@ Reference Implementation (IRI).
 * You can execute `make config` and then edit file `build/local.mk` for custom build options.
     - ``BUILD_AVX``: build Intel AVX-accelerated Curl backend.
     - ``BUILD_GPU``: build OpenCL-based GPU accelerations.
+    - ``BUILD_FPGA``: build FPGA support (requires FPGA board connected to your Raspberry Pi).
     - ``BUILD_JNI``: build a shared library for IRI. The build system would generate JNI header file
                    from downloading from
                    [latest JAVA source](https://github.com/chenwei-tw/iri/tree/feat/new_pow_interface).
@@ -56,6 +57,27 @@ Reference Implementation (IRI).
 * Alternatively, you can specify conditional build as following:
 ```shell
 $ make BUILD_GPU=0 BUILD_JNI=1 BUILD_AVX=1
+```
+# FPGA requirement
+* You need to download and install the bcm2835 library
+```
+$ wget http://www.airspayce.com/mikem/bcm2835/bcm2835-1.55.tar.gz
+$ tar zxvf bcm2835-1.55.tar.gz
+$ cd bcm2835-1.xx
+$ ./configure
+$ make
+$ sudo make check
+$ sudo make install
+```
+
+* You then need to enable SPI on your Raspberry Pi using
+```
+$ sudo raspi-config
+-> Interfacing Options
+-> SPI
+-> Enable
+$ sudo reboot
+
 ```
 
 # Test

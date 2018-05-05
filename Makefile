@@ -39,6 +39,10 @@ ifeq ("$(BUILD_GPU)","1")
 include mk/opencl.mk
 endif
 
+ifeq ("$(BUILD_FPGA)","1")
+include mk/fpga.mk
+endif
+
 ifeq ("$(BUILD_JNI)","1")
 include mk/java.mk
 endif
@@ -67,6 +71,11 @@ ifeq ("$(BUILD_GPU)","1")
 TESTS += \
 	pow_cl \
 	multi_pow_gpu
+endif
+
+ifeq ("$(BUILD_FPGA)","1")
+TESTS += \
+	pow_fpga
 endif
 
 ifeq ("$(BUILD_COMPAT)", "1")
@@ -101,6 +110,11 @@ ifeq ("$(BUILD_GPU)","1")
 OBJS += \
 	pow_cl.o \
 	clcontext.o
+endif
+
+ifeq ("$(BUILD_FPGA)","1")
+OBJS += \
+	pow_fpga.o
 endif
 
 ifeq ("$(BUILD_JNI)","1")
