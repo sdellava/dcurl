@@ -33,6 +33,7 @@
 #define CMD_READ_PARALLEL               0x18000000
 #define CMD_LOOP_TEST                   0x54123456
 
+#define CMD_READ_MID_STATE              0x1c000000
 
 static uint32_t nonce_first_trits_lo[2] = {0};
 static uint32_t nonce_first_trits_hi[2] = {0};
@@ -143,6 +144,13 @@ void cmd_read_parallel_level() {
     *tritshi = (rcv & 0x00000700) >> 8;
 }*/
 
+void cmd_read_mid_state(uint32_t* tritshi, uint32_t* tritslo) {
+    uint32_t cmd = CMD_READ_MID_STATE;
+    uint32_t rcv = sendReceive(cmd);
+    
+    *tritslo = rcv & 0x000001ff;
+    *tritshi = (rcv >> 9) & 0x000001ff;
+}
 
 uint32_t cmd_read_binary_nonce() {
     uint32_t cmd = CMD_READ_NONCE;
@@ -316,6 +324,11 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     // reset write pointer - it gets incremented automatically with every write
     cmd_reset_wrptr();
     
+    
+    
+    uint32_t verify_lo[STATE_LENGTH/9]={0};
+    uint32_t verify_hi[STATE_LENGTH/9]={0};
+    
     // convert trits to 9byte-wise data
     for (uint32_t i=0;i<STATE_LENGTH/9;i++) {
         uint32_t tritslo = 0;
@@ -324,8 +337,24 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
             tritslo |= trit_to_bit_lo(c_state[i*9+j]) << j;
             tritshi |= trit_to_bit_hi(c_state[i*9+j]) << j;
         }
+        verify_lo[i] = tritslo;
+        verify_hi[i] = tritshi;
         cmd_write_data(tritshi, tritslo);
     }
+    
+    
+    // do verify
+    cmd_reset_wrptr(); // dual purpose for debugging rdptr
+    
+    for (uint32_t i=0;i<STATE_LENGTH/9;i++) {
+        uint32_t tritslo;
+        uint32_t tritshi;
+        cmd_read_mid_state(&tritshi, &tritslo);
+        if (tritshi != verify_hi[i] || tritslo != verify_lo[i]) {
+            printf("verify error at addr %u: %08x %08x vs %08x %08x\n",i,verify_hi[i],verify_lo[i],tritshi,tritslo);
+        }
+    }
+    
 
     // write min weight magnitude
     cmd_write_min_weight_magnitude(mwm);
