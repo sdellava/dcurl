@@ -103,6 +103,13 @@ void cmd_reset_wrptr() {
     send(cmd);
 }
 
+void cmd_set_wrptr(uint32_t addr) {
+    uint32_t cmd = CMD_RESET_WRPTR;
+    
+    cmd |= addr & 0x000000ff;
+    send(cmd);
+}
+
 void cmd_write_data(uint32_t tritshi, uint32_t tritslo) {
     uint32_t cmd = CMD_WRITE_DATA;
     
@@ -342,6 +349,7 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
         }
         verify_lo[i] = tritslo;
         verify_hi[i] = tritshi;
+        cmd_set_wrptr(i);
         cmd_write_data(tritshi, tritslo);
     }
     
@@ -352,6 +360,7 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     for (uint32_t i=0;i<STATE_LENGTH/9;i++) {
         uint32_t tritslo;
         uint32_t tritshi;
+        cmd_set_wrptr(i);
         cmd_read_mid_state(&tritshi, &tritslo);
         if (tritshi != verify_hi[i] || tritslo != verify_lo[i]) {
             printf("verify error at addr %u: %08x %08x vs %08x %08x\n",i,verify_hi[i],verify_lo[i],tritshi,tritslo);
