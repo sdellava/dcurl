@@ -109,7 +109,10 @@ void cmd_write_data(uint32_t tritshi, uint32_t tritslo) {
     cmd |= tritslo & 0x000001ff;
     cmd |= (tritshi & 0x000001ff) << 9;
     
-    send(cmd);
+    uint32_t sent = sendReceive(cmd);
+    if (sent != cmd) {
+        printf("verify error! %08x vs %08x\n", cmd, sent);
+    }
 }
 
 void cmd_read_parallel_level() {
