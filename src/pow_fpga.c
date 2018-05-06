@@ -79,7 +79,9 @@ uint32_t sendReceive(uint32_t cmd) {
     bcm2835_spi_transfernb((char*) &zero, (char*) &rcv, 4);
     bcm2835_gpio_set(CS);
     
-    return reverse(rcv);
+    rcv = reverse(rcv);
+//    printf("sent: %08x received: %08x\n",cmd, rcv);
+    return rcv;
 }
 
 // nop
@@ -306,12 +308,15 @@ int pow_fpga_init()
     bcm2835_gpio_fsel(CS,BCM2835_GPIO_FSEL_OUTP);
 		  
     init_cs();
-    
     // read parallel level from FPGA
     cmd_read_parallel_level();
     
-    printf("parallel level detected: %u\n", parallel);
+    if (parallel > 9) {
+        printf("illegal parallel level detected!\n");
+        return 0;
+    }
     
+    printf("parallel level detected: %u\n", parallel);
     return 1;
 }
 
