@@ -35,10 +35,11 @@
 
 #define CMD_READ_MID_STATE              0x1c000000
 
-static uint32_t nonce_first_trits_lo[2] = {0};
-static uint32_t nonce_first_trits_hi[2] = {0};
+//static uint32_t nonce_first_trits_lo[2] = {0};
+//static uint32_t nonce_first_trits_hi[2] = {0};
 
 static uint32_t parallel = 0;
+static uint32_t log2 = 0;
 
 int pow3(int a) {
         int res = 1;
@@ -48,6 +49,21 @@ int pow3(int a) {
         return res;
 }
 
+void set_parallel(uint32_t p) {
+    parallel = p;
+}
+
+uint32_t get_parallel() {
+    return parallel;
+}
+
+void set_log2(uint32_t u) {
+    log2 = u;
+}
+
+uint32_t get_log2() {
+    return log2;
+}
 
 uint32_t reverse(uint32_t cmd) {
     uint32_t rev = 0x00000000;
@@ -124,25 +140,9 @@ void cmd_write_data(uint32_t tritshi, uint32_t tritslo) {
     }
 }
 
-void cmd_read_parallel_level() {
+uint32_t cmd_read_parallel_level() {
     uint32_t cmd = CMD_READ_PARALLEL;
-    parallel = sendReceive(cmd) & 0x0000000f;
-    
-    for (int j=0;j<=1;j++) {
-        for (int i=0;i<=parallel-1;i++) {
-            int x = i/pow3(j);
-            if (x % 3 == 0) {
-                    nonce_first_trits_lo[j] |= 1<<i;
-                    nonce_first_trits_hi[j] |= 1<<i;
-            }
-            if (x % 3 == 1) {
-                    nonce_first_trits_hi[j] |= 1<<i;
-            }
-            if (x % 3 == 2) {
-                    nonce_first_trits_lo[j] |= 1<<i;
-            }
-        }
-    }
+    return sendReceive(cmd) & 0x0000000f;
 }
     
 
@@ -309,14 +309,23 @@ int pow_fpga_init()
 		  
     init_cs();
     // read parallel level from FPGA
-    cmd_read_parallel_level();
+    set_parallel(cmd_read_parallel_level());
     
-    if (parallel > 9) {
+    if (get_parallel() > 31) {
         printf("illegal parallel level detected!\n");
         return 0;
     }
+
+    // log2(parallel)
+    uint32_t log2 = 0;
+    for (int i=0;i<32;i++) {
+        if (get_parallel() & (1<<i)) {
+            log2 = i;
+        }
+    }
+    set_log2(log2);
     
-    printf("parallel level detected: %u\n", parallel);
+    printf("parallel level detected: %u\n", get_parallel());
     return 1;
 }
 
@@ -339,11 +348,6 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     // reset write pointer - it gets incremented automatically with every write
     cmd_reset_wrptr();
     
-    
-    
-    uint32_t verify_lo[STATE_LENGTH/9]={0};
-    uint32_t verify_hi[STATE_LENGTH/9]={0};
-    
     // convert trits to 9byte-wise data
     for (uint32_t i=0;i<STATE_LENGTH/9;i++) {
         uint32_t tritslo = 0;
@@ -352,26 +356,9 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
             tritslo |= trit_to_bit_lo(c_state[i*9+j]) << j;
             tritshi |= trit_to_bit_hi(c_state[i*9+j]) << j;
         }
-        verify_lo[i] = tritslo;
-        verify_hi[i] = tritshi;
         cmd_set_wrptr(i);
         cmd_write_data(tritshi, tritslo);
     }
-    
-    
-    // do verify
-    cmd_reset_wrptr(); // dual purpose for debugging rdptr
-    
-    for (uint32_t i=0;i<STATE_LENGTH/9;i++) {
-        uint32_t tritslo;
-        uint32_t tritshi;
-        cmd_set_wrptr(i);
-        cmd_read_mid_state(&tritshi, &tritslo);
-        if (tritshi != verify_hi[i] || tritslo != verify_lo[i]) {
-            printf("verify error at addr %u: %08x %08x vs %08x %08x\n",i,verify_hi[i],verify_lo[i],tritshi,tritslo);
-        }
-    }
-    
 
     // write min weight magnitude
     cmd_write_min_weight_magnitude(mwm);
@@ -394,7 +381,7 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
 
     printf("Found nonce: %08x (mask: %08x)\n", binary_nonce, mask);
     
-    double nodespersec = (double) binary_nonce / (double) (stop-start) / 1000.0 * (double) parallel;
+    double nodespersec = (double) binary_nonce / (double) (stop-start) / 1000.0 * (double) get_parallel();
     printf("Time: %llums  -  MH/s: %.3f\n", (stop-start), nodespersec);
 
     if (!mask)
@@ -410,27 +397,44 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
         }
     }
 
+    // assemble nonce
     uint8_t bitslo[NonceTrinarySize] = {0};
     uint8_t bitshi[NonceTrinarySize] = {0};
 
-    uint8_t* ptr_bitslo = &bitslo[0];
-    uint8_t* ptr_bitshi = &bitshi[0];
-    
-    for (int i=0;i<2;i++) {
-        *ptr_bitslo++ = (nonce_first_trits_lo[i] & (1 << found_bit)) ? 0x1 : 0x0;
-        *ptr_bitshi++ = (nonce_first_trits_hi[i] & (1 << found_bit)) ? 0x1 : 0x0;
-    }
-    
-    for (int i=0;i<32;i++) {
-        *ptr_bitslo++ = (binary_nonce >> i) & 0x1;
-        *ptr_bitshi++ = ((~binary_nonce) >> i) & 0x1;
+    // initialize 
+    for (int i=0;i<NonceTrinarySize;i++) {
+        bitslo[i] = 0x1;
+        bitshi[i] = 0x1;
     }
 
-    for (int i=33;i<NonceTrinarySize;i++) {
-        *ptr_bitslo++ = 0x1;
-        *ptr_bitshi++ = 0x1;
+    // insert initial nonce trits bit thingies
+    for (int j=0;j<=get_log2();j++) {
+        bitslo[j] = (found_bit >> j) & 0x1;
+        bitshi[j] = (~(found_bit >> j)) & 0x1;
     }
-  
+
+    // insert nonce counter
+    for (int i=0;i<32;i++) {
+        bitslo[NonceTrinarySize - 32 + i] = (binary_nonce >> i) & 0x1;
+        bitshi[NonceTrinarySize - 32 + i] = ((~binary_nonce) >> i) & 0x1;
+    }
+/*    
+    char slo[NonceTrinarySize+1] = {0};
+    char shi[NonceTrinarySize+1] = {0};
+    
+    for (int i=0;i<NonceTrinarySize;i++) {
+        if (bitslo[i])
+            slo[i]='1';
+        else
+            slo[i]='0';
+        if (bitshi[i])
+            shi[i]='1';
+        else
+            shi[i]='0';
+    }
+    
+    printf("%s\n%s\n",slo,shi);
+*/  
     int8_t* nonceTrits = (int8_t*) malloc(NonceTrinarySize);
     for (int i=0;i<NonceTrinarySize;i++) {
         nonceTrits[i] = lh_to_trit(bitshi[i], bitslo[i]);
