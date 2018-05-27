@@ -18,25 +18,24 @@
 #define CS 5
 //#define STATE_LENGTH 729
 //#define HASH_LENGTH 243
-#define FLAG_RUNNING (1<<0)
-#define FLAG_FOUND (1<<1)
-#define FLAG_OVERFLOW (1<<2)
+#define FLAG_RUNNING                    (1<<0)
+#define FLAG_FOUND                      (1<<1)
+#define FLAG_OVERFLOW                   (1<<2)
+#define FLAG_CURL_FINISHED              (1<<3)
+
+
+#define FLAG_START                      (1<<0)
+#define FLAG_CURL_RESET                 (1<<1)
+#define FLAG_CURL_WRITE                 (1<<2)
+#define FLAG_CURL_DO_CURL               (1<<3)
 
 #define CMD_NOP                         0x00000000
-#define CMD_WRITE_FLAGS                 0x84000000       
-#define CMD_RESET_WRPTR                 0x94000000
-#define CMD_WRITE_DATA                  0x88000000
-#define CMD_WRITE_MIN_WEIGHT_MAGNITUDE  0x90000000
-#define CMD_READ_FLAGS                  0x04000000
-#define CMD_READ_NONCE                  0x0c000000
-#define CMD_READ_MASK                   0x10000000
-#define CMD_READ_PARALLEL               0x18000000
-#define CMD_LOOP_TEST                   0x54123456
-
-#define CMD_READ_MID_STATE              0x1c000000
-
-//static uint32_t nonce_first_trits_lo[2] = {0};
-//static uint32_t nonce_first_trits_hi[2] = {0};
+#define CMD_WRITE_FLAGS                 0x80000000       
+#define CMD_RESET_WRPTR                 0x40000000
+#define CMD_WRITE_DATA                  0x20000000
+#define CMD_WRITE_MIN_WEIGHT_MAGNITUDE  0x10000000
+#define CMD_READ_FLAGS                  0x08000000
+#define CMD_READ_NONCE                  0x04000000
 
 static uint32_t parallel = 0;
 static uint32_t log2 = 0;
@@ -100,7 +99,6 @@ uint32_t sendReceive(uint32_t cmd) {
     return rcv;
 }
 
-// nop
 // write flags
 void cmd_write_flags(char flag_start) {
     uint32_t cmd = CMD_WRITE_FLAGS;
@@ -111,20 +109,8 @@ void cmd_write_flags(char flag_start) {
     send(cmd);
 }
 
-uint32_t cmd_read_test() {
-    uint32_t cmd = CMD_LOOP_TEST;
-    return sendReceive(cmd);
-}
-
 void cmd_reset_wrptr() {
     uint32_t cmd = CMD_RESET_WRPTR;
-    send(cmd);
-}
-
-void cmd_set_wrptr(uint32_t addr) {
-    uint32_t cmd = CMD_RESET_WRPTR;
-    
-    cmd |= addr & 0x000000ff;
     send(cmd);
 }
 
@@ -133,37 +119,20 @@ void cmd_write_data(uint32_t tritshi, uint32_t tritslo) {
     
     cmd |= tritslo & 0x000001ff;
     cmd |= (tritshi & 0x000001ff) << 9;
-    
+ 
+    send(cmd);
+/*    
     uint32_t sent = sendReceive(cmd);
     if (sent != cmd) {
         printf("verify error! %08x vs %08x\n", cmd, sent);
-    }
+    }*/
 }
 
 uint32_t cmd_read_parallel_level() {
-    uint32_t cmd = CMD_READ_PARALLEL;
-    return sendReceive(cmd) & 0x0000000f;
+    uint32_t cmd = CMD_READ_FLAGS;
+    return (sendReceive(cmd) & 0x000000f0) >> 4;
 }
     
-
-/*void cmd_read_data(uint32_t address, uint32_t *tritshi, uint32_t *tritslo) {
-    uint32_t cmd = 0x08000000;
-    cmd |= (address & 0x000003ff) << 16;
-    
-    uint32_t rcv = sendReceive(cmd);
-    
-    *tritslo = rcv & 0x00000007;
-    *tritshi = (rcv & 0x00000700) >> 8;
-}*/
-
-void cmd_read_mid_state(uint32_t* tritshi, uint32_t* tritslo) {
-    uint32_t cmd = CMD_READ_MID_STATE;
-    uint32_t rcv = sendReceive(cmd);
-    
-    *tritslo = rcv & 0x000001ff;
-    *tritshi = (rcv >> 9) & 0x000001ff;
-}
-
 uint32_t cmd_read_binary_nonce() {
     uint32_t cmd = CMD_READ_NONCE;
     return sendReceive(cmd);
@@ -183,14 +152,14 @@ void cmd_write_min_weight_magnitude(int bits) {
 
 
 uint32_t cmd_get_mask() {
-    uint32_t cmd = CMD_READ_MASK;
-    return sendReceive(cmd) & ((1<<parallel)-1);
+    uint32_t cmd = CMD_READ_FLAGS;
+    return ((sendReceive(cmd) >> 8) & ((1<<parallel)-1));
 }
 
 
 uint32_t cmd_get_flags() {
     uint32_t cmd = CMD_READ_FLAGS;
-    return sendReceive(cmd) & 0x00000007;
+    return sendReceive(cmd) & 0x0000000f;
 }
 
 void init_cs() {
@@ -231,57 +200,17 @@ uint32_t trit_to_bit_hi(int8_t trit) {
     }
 }
 
-
-static int8_t *tx_to_cstate(Trytes_t *tx)
-{
-    Curl *c = initCurl();
-    if (!c)
-        return NULL;
-
-    int8_t *c_state = (int8_t *) malloc(c->state->len);
-    if (!c_state)
-        return NULL;
-
-    int8_t tyt[(transactionTrinarySize - HashSize) / 3] = {0};
-
-    /* Copy tx->data[:(transactionTrinarySize - HashSize) / 3] to tyt */
-    memcpy(tyt, tx->data, (transactionTrinarySize - HashSize) / 3);
-
-    Trytes_t *inn = initTrytes(tyt, (transactionTrinarySize - HashSize) / 3);
-    if (!inn)
-        return NULL;
-
-    Absorb(c, inn);
-
-    Trits_t *tr = trits_from_trytes(tx);
-    if (!tr)
-        return NULL;
-
-    /* Prepare an array storing tr[transactionTrinarySize - HashSize:] */
-    memcpy(c_state, tr->data + transactionTrinarySize - HashSize,
-           tr->len - (transactionTrinarySize - HashSize));
-    memcpy(c_state + tr->len - (transactionTrinarySize - HashSize),
-           c->state->data + tr->len - (transactionTrinarySize - HashSize),
-           c->state->len - tr->len + (transactionTrinarySize - HashSize));
-
-    freeTrobject(inn);
-    freeTrobject(tr);
-    freeCurl(c);
-
-    return c_state;
-}
-
 static int8_t *nonce_to_result(Trytes_t *tx, Trytes_t *nonce)
 {
     int rst_len = tx->len - NonceTrinarySize / 3 + nonce->len;
-    int8_t *rst = (int8_t *) malloc(rst_len + 1);
+    int8_t *rst = (int8_t *) malloc(rst_len);
     if (!rst)
         return NULL;
 
     memcpy(rst, tx->data, tx->len - NonceTrinarySize / 3);
     memcpy(rst + tx->len - NonceTrinarySize / 3, nonce->data,
            rst_len - (tx->len - NonceTrinarySize / 3));
-    rst[rst_len] = '\0';
+
     return rst;
 }
 
@@ -302,7 +231,7 @@ int pow_fpga_init()
     bcm2835_spi_begin();
     bcm2835_spi_setBitOrder(BCM2835_SPI_BIT_ORDER_MSBFIRST);      /* default */
     bcm2835_spi_setDataMode(BCM2835_SPI_MODE0);                   /* default */
-    bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_256);
+    bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_64);
     bcm2835_spi_chipSelect(BCM2835_SPI_CS_NONE);                      /* default */
 		    
     bcm2835_gpio_fsel(CS,BCM2835_GPIO_FSEL_OUTP);
@@ -335,30 +264,60 @@ void pow_fpga_destroy()
 }
 
 
+// convert and send block of data to FPGA mid-state
+void send_data(int8_t* data) {
+    cmd_reset_wrptr();
 
+    for (uint32_t i=0;i<243/9;i++) {
+        uint32_t tritslo = 0;
+        uint32_t tritshi = 0;
+        for (uint32_t j=0;j<9;j++) {
+            tritslo |= trit_to_bit_lo(data[i*9+j]) << j;
+            tritshi |= trit_to_bit_hi(data[i*9+j]) << j;
+        }
+        cmd_write_data(tritshi, tritslo);
+    }    
+}    
+
+// write curl mid-state on FPGA and perform curl optionally
+void cmd_curl_send_block(int8_t* data, uint8_t docurl) {
+    send_data(data);
+    
+    uint32_t cmd = CMD_WRITE_FLAGS | FLAG_CURL_WRITE | ((docurl) ? FLAG_CURL_DO_CURL : 0); 
+    send(cmd);
+    
+    while (!(cmd_get_flags() & FLAG_CURL_FINISHED)) {
+        asm("nop");
+    }
+}
+
+// initialize mid-state on FPGA
+void cmd_curl_init_block() {
+    uint32_t cmd = CMD_WRITE_FLAGS | FLAG_CURL_RESET;
+    send(cmd);
+    
+    while (!(cmd_get_flags() & FLAG_CURL_FINISHED)) {
+        asm("nop");
+    }
+}
 
 int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
 {
     Trytes_t *trytes_t = initTrytes(trytes, 2673);
-
-    int8_t *c_state = tx_to_cstate(trytes_t);
-    if (!c_state)
-        return NULL;
-
-    // reset write pointer - it gets incremented automatically with every write
-    cmd_reset_wrptr();
+    Trits_t *tr = trits_from_trytes(trytes_t);
     
-    // convert trits to 9byte-wise data
-    for (uint32_t i=0;i<STATE_LENGTH/9;i++) {
-        uint32_t tritslo = 0;
-        uint32_t tritshi = 0;
-        for (uint32_t j=0;j<9;j++) {
-            tritslo |= trit_to_bit_lo(c_state[i*9+j]) << j;
-            tritshi |= trit_to_bit_hi(c_state[i*9+j]) << j;
+    long long start1 = current_timestamp();
+
+    // calculate mid-state on FPGA
+    cmd_curl_init_block();
+    for (int blocknr = 0; blocknr < 33; blocknr++) {
+        if (blocknr != 32) {
+            cmd_curl_send_block(&tr->data[blocknr * 243], 1);
+        } else {
+            cmd_curl_send_block(&tr->data[blocknr * 243], 0);
         }
-        cmd_set_wrptr(i);
-        cmd_write_data(tritshi, tritslo);
     }
+    long long stop1 = current_timestamp();
 
     // write min weight magnitude
     cmd_write_min_weight_magnitude(mwm);
@@ -366,28 +325,29 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     // start
     cmd_write_flags(1); 
     
-    long long start = current_timestamp();
+    long long start2 = current_timestamp();
     while (1) {
         uint32_t flags = cmd_get_flags();
-        if (!(flags & FLAG_RUNNING))
+
+        if (!(flags & FLAG_RUNNING) && ((flags & FLAG_FOUND) || flags & FLAG_OVERFLOW)) {
             break;
+        }
         delay(1);
     }
-    long long stop = current_timestamp();
+    long long stop2 = current_timestamp();
 
-    uint32_t binary_nonce = cmd_read_binary_nonce();//-1; // -1 comes from pipelining the counter for speed on FPGA
+    uint32_t binary_nonce = cmd_read_binary_nonce()-2; // -2 because of pipelining for speed on FPGA
     uint32_t mask = cmd_get_mask();
-
 
     printf("Found nonce: %08x (mask: %08x)\n", binary_nonce, mask);
     
-    double nodespersec = (double) binary_nonce / (double) (stop-start) / 1000.0 * (double) get_parallel();
-    printf("Time: %llums  -  MH/s: %.3f\n", (stop-start), nodespersec);
+    double nodespersec = (double) binary_nonce / (double) (stop2-start2) / 1000.0 * (double) get_parallel();
+    printf("Mid-State Time: %4llums\n", stop1-start1);
+    printf("PoW Time:       %4llums  -  MH/s: %.3f\n", (stop2-start2), nodespersec);
 
     if (!mask)
         return 0;
 
-    
     // find set bit in mask
     int found_bit = 0;
     for (int i=0;i<parallel;i++) {
@@ -418,23 +378,7 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
         bitslo[NonceTrinarySize - 32 + i] = (binary_nonce >> i) & 0x1;
         bitshi[NonceTrinarySize - 32 + i] = ((~binary_nonce) >> i) & 0x1;
     }
-/*    
-    char slo[NonceTrinarySize+1] = {0};
-    char shi[NonceTrinarySize+1] = {0};
-    
-    for (int i=0;i<NonceTrinarySize;i++) {
-        if (bitslo[i])
-            slo[i]='1';
-        else
-            slo[i]='0';
-        if (bitshi[i])
-            shi[i]='1';
-        else
-            shi[i]='0';
-    }
-    
-    printf("%s\n%s\n",slo,shi);
-*/  
+
     int8_t* nonceTrits = (int8_t*) malloc(NonceTrinarySize);
     for (int i=0;i<NonceTrinarySize;i++) {
         nonceTrits[i] = lh_to_trit(bitshi[i], bitslo[i]);
@@ -451,7 +395,6 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
     int8_t *last_result = nonce_to_result(trytes_t, nonce);
     
     /* Free memory */
-    free(c_state);
     freeTrobject(trytes_t);
     freeTrobject(nonce_t);
     freeTrobject(nonce);
