@@ -8,11 +8,11 @@ IOTA PoW (proof of work) is one of the biggeste challenges for small microcontro
 
 This repository is about the implementation of PoW in hardware to boost PoW performance of small controllers.
 
-Currently, it is running on Altera DE1 (quite old Cyclon2 with 22kLE @ 120MHz, 85% resources used) and archives 4.2MH/s - this enables a Raspberry Pi to perform PoW within 2-3 seconds (>x30 performance gain) :)
+Currently, it is running on a custom Raspberry Pi extension board with Cyclone 10 LP (25kLE @ 188MHz, 98% resources used) and archives 15.8MH/s - about 200x faster than a Raspberry without Hardware Accelerator. And about 5.8x faster than the SSE dcurl version on a quad-core i5.
 
-# Next steps
+# Updates
 
-The next step is to develop and build an extension PCB which fits perfectly on top of a Raspi - I think, I'll need 8 weeks from now (=mid June'18).
+The project website https://microengineer.eu is always up to date :)
 
 All hardware and software will become open-source.
 
