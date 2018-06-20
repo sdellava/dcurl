@@ -12,7 +12,7 @@ Currently, it is running on a custom Raspberry Pi extension board with Cyclone 1
 
 # Updates
 
-The project website https://microengineer.eu is always up to date :)
+The project website https://microengineer.eu/2018/04/25/iota-pearl-diver-fpga/ is always up to date :)
 
 All hardware and software will become open-source.
 
