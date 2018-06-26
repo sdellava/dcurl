@@ -30,12 +30,13 @@
 #define FLAG_CURL_DO_CURL               (1<<3)
 
 #define CMD_NOP                         0x00000000
-#define CMD_WRITE_FLAGS                 0x80000000       
-#define CMD_RESET_WRPTR                 0x40000000
-#define CMD_WRITE_DATA                  0x20000000
-#define CMD_WRITE_MIN_WEIGHT_MAGNITUDE  0x10000000
-#define CMD_READ_FLAGS                  0x08000000
-#define CMD_READ_NONCE                  0x04000000
+#define CMD_WRITE_FLAGS                 0x04000000       
+#define CMD_RESET_WRPTR                 0x08000000
+#define CMD_WRITE_DATA                  0x10000000
+#define CMD_WRITE_MIN_WEIGHT_MAGNITUDE  0x20000000
+#define CMD_READ_FLAGS                  0x84000000
+#define CMD_READ_NONCE                  0x88000000
+#define CMD_READ_CRC32                  0x90000000
 
 static uint32_t parallel = 0;
 static uint32_t log2 = 0;
@@ -358,7 +359,8 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
         }
     }
 
-    // assemble nonce
+
+// assemble nonce
     uint8_t bitslo[NonceTrinarySize] = {0};
     uint8_t bitshi[NonceTrinarySize] = {0};
 
@@ -368,10 +370,18 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
         bitshi[i] = 0x1;
     }
 
+    const uint8_t sig_lo[24]={0, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1};
+    const uint8_t sig_hi[24]={1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1};
+    
+    for (int i=0;i<24;i++) {
+        bitslo[i] = sig_lo[i];
+        bitshi[i] = sig_hi[i];
+    }
+    
     // insert initial nonce trits bit thingies
     for (int j=0;j<=get_log2();j++) {
-        bitslo[j] = (found_bit >> j) & 0x1;
-        bitshi[j] = (~(found_bit >> j)) & 0x1;
+        bitslo[j+24] = (found_bit >> j) & 0x1;
+        bitshi[j+24] = (~(found_bit >> j)) & 0x1;
     }
 
     // insert nonce counter
@@ -379,6 +389,7 @@ int8_t *PowFPGA(int8_t *trytes, int mwm, int index)
         bitslo[NonceTrinarySize - 32 + i] = (binary_nonce >> i) & 0x1;
         bitshi[NonceTrinarySize - 32 + i] = ((~binary_nonce) >> i) & 0x1;
     }
+
 
     int8_t* nonceTrits = (int8_t*) malloc(NonceTrinarySize);
     for (int i=0;i<NonceTrinarySize;i++) {
